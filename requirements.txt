@@ -1,0 +1,33 @@
+# Core
+Django==5.2.*                       # current LTS (3-yr support); 5.0+ needed for GeneratedField
+djangorestframework==3.16.*
+djangorestframework-simplejwt[crypto]==5.*   # [crypto] pulls in cryptography for RS/EC signing
+django-environ==0.12.*
+django-cors-headers==4.*
+psycopg[binary]==3.*                # Postgres driver (psycopg3)
+
+# Vector / search
+pgvector==0.4.*                     # provides pgvector.django VectorField + VectorExtension (compatible with pg extension v0.8.2)
+
+# Async pipeline
+celery==5.*
+redis==5.*
+
+# Storage
+django-storages[s3]==1.*
+boto3==1.*
+
+# AI APIs
+anthropic==0.*                      # Claude (summary/tags/extraction)
+openai==1.*                         # Whisper transcription + embeddings
+
+# Document/URL extraction
+PyMuPDF==1.*                        # PDF text extraction
+trafilatura==2.*                    # URL article extraction
+
+# Auth
+google-auth==2.*                    # verifies Google ID tokens
+requests==2.*                       # required by google-auth transport
+
+# Prod server
+gunicorn==23.*
