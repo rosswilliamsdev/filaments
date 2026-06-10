@@ -105,6 +105,16 @@ This captures the decision points worked through in the planning interview and t
 
 ---
 
+## Implementation Phase
+
+### FilamentLink reversed-duplicate guard — canonical ordering vs. lookup-then-create _(2026-06-10)_
+**Context:** surfaced while sanity-testing the implemented schema. `unique(source_id, target_id)` stops `(A, B)` from being inserted twice but does **not** stop `(B, A)` after `(A, B)` — and re-processing a filament is exactly the scenario that produces a reversed insert. The planning doc asserts "one row per pair" but nothing enforced it.
+**Options:** (a) **canonical ordering** — always store the pair sorted (lower UUID as `source`), backed by a `CheckConstraint(source_id < target_id)` so the database itself makes reversed rows impossible; (b) **lookup-then-create** — query both directions in application code before creating, preserving the "new → existing" direction semantics.
+**Chosen:** (a) canonical ordering — judged the safest: the invariant lives in the schema, not in call-site discipline, so it survives any future code path (bulk ops, admin edits, a second linker implementation). The strict `<` also rules out self-links for free.
+**Cost accepted:** `source` no longer records which filament initiated the link. Acceptable because the UI treats links as undirected and creation direction was never surfaced. All link creation must go through `FilamentLink.create_link(a, b, score)`, which sorts the pair and `update_or_create`s — so re-processing refreshes the score on the existing row instead of erroring.
+
+---
+
 ## Decisions That Shifted During the Session
 
 Worth flagging, since these reversed on new information:

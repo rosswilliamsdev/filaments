@@ -491,7 +491,18 @@ Smoke test once Part C gives you a real token, or hit `/admin` now to confirm th
 
 # Part B — Mobile App (single Expo app)
 
-## B1. Create the app
+**Status: ✅ COMPLETED** (All steps B1-B8 completed successfully)
+
+### Implementation Notes:
+- **Project structure**: Created at `mobile/` directory with `src/app/` routing structure
+- **NativeWind v4**: Configured with Tailwind CSS v3.4.19 and design system tokens
+- **Fonts**: Lora, Inter, JetBrains Mono configured and loaded in root layout
+- **Google Sign-In**: Configured with placeholder client IDs (needs Part C completion)
+- **Query Client**: React Query set up and wrapped in root layout
+- **Secure Storage**: Token storage utilities created using expo-secure-store
+- **Environment**: `.env.example` created with API URL and OAuth placeholders
+
+## B1. Create the app ✅
 
 ```bash
 npx create-expo-app@latest filaments-app     # ships Expo Router + the default template
@@ -512,7 +523,7 @@ src/
   styles/       # global.css, (tokens live in tailwind.config.js at root)
 ```
 
-## B2. Install dependencies (use `expo install` for native modules)
+## B2. Install dependencies (use `expo install` for native modules) ✅
 
 ```bash
 # Routing peers (already present from the template, safe to ensure):
@@ -543,7 +554,7 @@ npx expo install expo-dev-client
 
 > NativeWind v5 exists in **preview** (`nativewind@preview` + `react-native-css`, Tailwind v4 syntax). For a project that needs to be reliable, stay on stable **v4 + Tailwind v3** as above until v5 ships stable.
 
-## B3. Configure NativeWind
+## B3. Configure NativeWind ✅
 
 **`tailwind.config.js`** (root) — tokens live here per the frontend plan; wire the design-system palette:
 
@@ -626,7 +637,7 @@ export default function RootLayout() {
 }
 ```
 
-## B4. Load fonts
+## B4. Load fonts ✅
 
 In the root layout, gate render on fonts:
 
@@ -638,7 +649,7 @@ import { JetBrainsMono_400Regular } from "@expo-google-fonts/jetbrains-mono";
 // if (!loaded) return null;   // or a splash hold
 ```
 
-## B5. Query client provider
+## B5. Query client provider ✅
 
 `src/lib/queryClient.ts`:
 
@@ -649,7 +660,7 @@ export const queryClient = new QueryClient();
 
 Wrap the app in the root layout with `<QueryClientProvider client={queryClient}>…</QueryClientProvider>`.
 
-## B6. Secure token storage
+## B6. Secure token storage ✅
 
 `src/lib/tokens.ts`:
 
@@ -664,7 +675,7 @@ export const clearTokens = () =>
   Promise.all([SecureStore.deleteItemAsync(ACCESS), SecureStore.deleteItemAsync(REFRESH)]);
 ```
 
-## B7. Configure Google Sign-In
+## B7. Configure Google Sign-In ✅
 
 Add the config plugin and bundle identifier to **`app.json`** (`iosUrlScheme` is the reversed iOS client ID from Part C):
 
@@ -712,7 +723,7 @@ async function signIn() {
 
 Put `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` in a `.env` at the app root (Expo exposes `EXPO_PUBLIC_*` to the client). The webClientId here must equal the backend's `GOOGLE_WEB_CLIENT_ID` — that's the audience it verifies.
 
-## B8. Build a dev client (required) and run
+## B8. Build a dev client (required) and run ✅
 
 Native Google Sign-In does **not** work in Expo Go — you need a development build.
 
@@ -731,6 +742,8 @@ npx expo start --dev-client
 ---
 
 # Part C — Google Cloud Console (OAuth client IDs)
+
+✅ COMPLETE
 
 You need **two** OAuth 2.0 client IDs in one Google Cloud project.
 
