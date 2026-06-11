@@ -183,7 +183,9 @@ ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
 OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 
 # Google OAuth
-GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
+GOOGLE_WEB_CLIENT_ID = env("GOOGLE_WEB_CLIENT_ID")
+GOOGLE_IOS_CLIENT_ID = env("GOOGLE_IOS_CLIENT_ID", default="")
+ALLOWED_GOOGLE_EMAILS = env.list("ALLOWED_GOOGLE_EMAILS")
 
 # AWS S3 Storage (optional, falls back to local filesystem)
 USE_S3 = env.bool('USE_S3', default=False)

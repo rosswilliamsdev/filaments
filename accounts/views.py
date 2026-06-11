@@ -1,97 +1,33 @@
-from rest_framework.decorators import api_view, permission_classes
+from django.conf import settings
+from django.contrib.auth.models import User
+from google.oauth2 import id_token
+from google.auth.transport import requests as g_requests
+from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-from google.auth.transport import requests
-from google.oauth2 import id_token
-from django.conf import settings
 
-User = get_user_model()
+class GoogleAuthView(APIView):
+    permission_classes = [AllowAny]          # the one public route
 
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def google_auth(request):
-    """
-    Authenticate user via Google ID token.
-    Expects: { "token": "<google-id-token>" }
-    Returns: { "access": "<jwt>", "refresh": "<jwt>", "user": {...} }
-    """
-    token = request.data.get('token')
-    if not token:
-        return Response(
-            {'error': 'Token is required'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    try:
-        # Verify the Google ID token
-        idinfo = id_token.verify_oauth2_token(
-            token,
-            requests.Request(),
-            settings.GOOGLE_CLIENT_ID
-        )
-
-        # Get user info from token
-        email = idinfo.get('email')
-        given_name = idinfo.get('given_name', '')
-        family_name = idinfo.get('family_name', '')
-
-        if not email:
-            return Response(
-                {'error': 'Email not found in token'},
-                status=status.HTTP_400_BAD_REQUEST
+    def post(self, request):
+        token = request.data.get("id_token")
+        try:
+            claims = id_token.verify_oauth2_token(
+                token, g_requests.Request(), settings.GOOGLE_WEB_CLIENT_ID
             )
-
-        # Get or create user
-        user, created = User.objects.get_or_create(
-            email=email,
-            defaults={
-                'username': email,
-                'first_name': given_name,
-                'last_name': family_name,
-            }
-        )
-
-        # Generate JWT tokens
+        except ValueError:
+            return Response({"error": "invalid google token"}, status=status.HTTP_401_UNAUTHORIZED)
+        if not claims.get("email_verified"):
+            return Response({"error": "invalid google token"}, status=status.HTTP_401_UNAUTHORIZED)
+        email = claims["email"]
+        if email not in settings.ALLOWED_GOOGLE_EMAILS:     # check BEFORE get_or_create
+            return Response({"error": "email not permitted"}, status=status.HTTP_403_FORBIDDEN)
+        user, _ = User.objects.get_or_create(username=email, defaults={"email": email})
         refresh = RefreshToken.for_user(user)
-
         return Response({
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
-            'user': {
-                'id': user.id,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-            }
-        }, status=status.HTTP_200_OK)
-
-    except ValueError as e:
-        # Invalid token
-        return Response(
-            {'error': 'Invalid token', 'detail': str(e)},
-            status=status.HTTP_401_UNAUTHORIZED
-        )
-    except Exception as e:
-        return Response(
-            {'error': 'Authentication failed', 'detail': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['GET'])
-def me(request):
-    """
-    Get current user info.
-    Requires authentication.
-    """
-    user = request.user
-    return Response({
-        'id': user.id,
-        'email': user.email,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-    })
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": {"id": user.id, "email": user.email},
+        })
