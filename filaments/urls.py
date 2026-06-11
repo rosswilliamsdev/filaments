@@ -16,9 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from rest_framework_simplejwt.views import TokenRefreshView
+from accounts.views import GoogleAuthView
+
+api_v1 = [
+    path("auth/google", GoogleAuthView.as_view()),
+    path("auth/token/refresh", TokenRefreshView.as_view()),
+    path("", include("core.urls")),   # /filaments, /tags, /search
+]
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/accounts/', include('accounts.urls')),
-    # Core API routes will be added here
+    path("admin/", admin.site.urls),
+    path("api/v1/", include((api_v1, "v1"))),
 ]
