@@ -8,67 +8,79 @@ Snapshot of what's left between the current state and the v1 finish line: "say '
 
 ## Where things stand
 
-| Area | Status |
-|---|---|
-| Scaffolding (Parts A–C) | ✅ Backend, mobile app, Google OAuth client IDs |
-| Part D wiring | ✅ Smoke test passed 2026-06-10 — Google sign-in round-trips from the Simulator dev build |
-| Mobile prototype | ✅ Sign-in gate, Timeline, Detail, Capture (text), Search — running against seeded backend data |
-| Auth (`/auth/google` + JWT) | ✅ Implemented per spec |
-| Data model (full spec) | ✅ Filament, ActionItem, Tag, FilamentTag, FilamentLink; `search_vector` generated column; canonical link ordering (`create_link()` + check constraint) |
-| API layer | ✅ `/filaments` CRUD + `/process` handshake, `/tags`, `/search` — 16 integration tests passing |
-| AI pipeline | ❌ `core/tasks.py` is a logging stub — enqueued rows stay in `processing` |
-| `/ask` (RAG) | ❌ Not started (depends on pipeline/embeddings) |
-| Periodic sweeps | ❌ Not started (scheduling decision still open) |
-| Deployment (Railway) | ❌ Not started |
-| Mobile voice capture | ❌ Record screen, upload handshake, audio player — needs expo-audio + S3 |
+| Area                        | Status                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scaffolding (Parts A–C)     | ✅ Backend, mobile app, Google OAuth client IDs                                                                                                         |
+| Part D wiring               | ✅ Smoke test passed 2026-06-10 — Google sign-in round-trips from the Simulator dev build                                                               |
+| Mobile prototype            | ✅ Sign-in gate, Timeline, Detail, Capture (text), Search — running against seeded backend data                                                         |
+| Auth (`/auth/google` + JWT) | ✅ Implemented per spec                                                                                                                                 |
+| Data model (full spec)      | ✅ Filament, ActionItem, Tag, FilamentTag, FilamentLink; `search_vector` generated column; canonical link ordering (`create_link()` + check constraint) |
+| API layer                   | ✅ `/filaments` CRUD + `/process` handshake, `/tags`, `/search` — 16 integration tests passing                                                          |
+| AI pipeline                 | ✅ Celery chain in `core/tasks.py`: transcribe/extract → Claude extraction → embedding → auto-link (0.75 / top 5) → done; 4 integration tests           |
+| `/ask` (RAG)                | ✅ `POST /ask` — embed → pgvector retrieve → Claude structured segments + sources + follow-ups; malformed → uncited fallback                            |
+| Export                      | ✅ `GET /filaments/{id}/export?format=markdown\|text\|json\|audio`                                                                                      |
+| Periodic sweeps             | ✅ Three management commands implemented; Railway cron expressions below                                                                                |
+| Deployment (Railway)        | ❌ Not started                                                                                                                                          |
+| Mobile voice capture        | ❌ Record screen, upload handshake, audio player — needs expo-audio + S3                                                                                |
 
 ---
 
 ## 1. Unblockers (config, no code)
 
 - [x] **Run the Part D smoke test** — ✅ 2026-06-10: signed in from the Simulator dev build, tokens round-tripped, timeline loaded. (Untested edge: non-allowlisted account → `403` — verify whenever a second Google account is handy.)
-- [ ] **Set up the dev S3 bucket** — create the bucket, fill `AWS_*` vars in `.env`, set `USE_S3=True`. Until then, `POST /filaments` for voice/document returns a deliberate `503` ("file uploads not configured"); text notes already work end-to-end.
-- [ ] **Fill `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`** in `.env` — required before any pipeline work can be tested.
+- [x] **Set up the dev S3 bucket** — create the bucket, fill `AWS_*` vars in `.env`, set `USE_S3=True`. Until then, `POST /filaments` for voice/document returns a deliberate `503` ("file uploads not configured"); text notes already work end-to-end.
+- [x] **Fill `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`** in `.env` — required before any pipeline work can be tested.
 
 ## 2. AI pipeline (the big one)
 
 Celery chain in `core/tasks.py`, replacing the stub. Spec: backend-planning-doc → Business Logic & Edge Cases.
 
-- [ ] **Transcribe** (voice → Whisper) / **extract** (PDF → PyMuPDF; URL → trafilatura) → populate `body` (+ `transcript` JSONB for voice). *Critical path.*
-- [ ] **Summarize + key ideas + action items** (Claude) → `summary`, `key_ideas`, `ActionItem` rows
-- [ ] **Tags** (Claude) → get-or-create `Tag` rows, set M2M
-- [ ] **Embedding** (OpenAI text-embedding-3-small) → `embedding`
-- [ ] **Auto-link** — pgvector cosine similarity against existing filaments; create links **only through `FilamentLink.create_link()`** (canonical ordering)
-- [ ] Failure policy: persist-and-resume (each step idempotent, persists on completion), ~3 retries with backoff for transient errors, **critical vs. enrichment split** (enrichment failure → still `done`, degraded), URL-no-extractable-text is **non-retryable**
-- [ ] Mark `done` / `failed` + surface in API (already exposed via `status`)
+- [x] **Transcribe** (voice → Whisper) / **extract** (PDF → PyMuPDF; URL → trafilatura) → populate `body` (+ `transcript` JSONB for voice). _Critical path._
+- [x] **Summarize + key ideas + action items + tags** (Claude, single structured-output call) → `summary`, `key_ideas`, `ActionItem` rows, `Tag` M2M
+- [x] **Embedding** (OpenAI text-embedding-3-small) → `embedding` (from `body` only)
+- [x] **Auto-link** — pgvector cosine ≥ 0.75, top 5, via `FilamentLink.create_link()` only
+- [x] Failure policy: persist-and-resume, 3 retries with backoff for transient errors, critical vs. enrichment split, URL-no-extractable-text non-retryable; `CELERY_TASK_ACKS_LATE` + `REJECT_ON_WORKER_LOST` set
+- [x] Mark `done` / `failed` (finalize only flips `processing` → `done`)
 
-**Decisions reserved for Ross (not pre-decidable):**
-- **Claude extraction prompt design** (PRD open Q #4) — what makes a good summary/tag/action-item set for your thinking style; needs consistent output across voice/document/text
-- **Auto-link relevance threshold** (PRD open Q #3) — minimum cosine similarity to create a link; needs experimentation against real captures
+**Decisions (settled 2026-06-11):**
 
-## 3. `/ask` endpoint (RAG)
+- **Claude extraction prompt** (PRD open Q #4) — single prompt for all three types, parameterized by `filament.type` (framing only); schema enforced via structured output; malformed → retry once → degraded. Prompt prose lives in `EXTRACTION_PROMPT` / `EXTRACTION_FRAMING` in `core/tasks.py` — tune wording there against real captures.
+- **Auto-link threshold** (PRD open Q #3) — cosine ≥ **0.75**, cap **top 5** (`AUTO_LINK_THRESHOLD` / `AUTO_LINK_LIMIT` in `core/tasks.py`); revisit after real-capture experimentation.
 
-- [ ] Embed the question → pgvector retrieve top filaments → Claude answer with **structured segments** (`[{text, citation?}]` + `sources` + `follow_ups`; see backend-planning-doc → API Design)
-- [ ] Strict response schema / tool use; on malformed model output fall back to a single uncited segment — never parse inline markers, never 500
+## 3. `/ask` endpoint (RAG) — ✅ done 2026-06-11
 
-## 4. Export (PRD v1 #12 — caught late, was missing from this list)
+- [x] Embed the question → pgvector retrieve top 6 → Claude answer with **structured segments** (`[{text, citation?}]` + `sources` + `follow_ups`) — logic in `core/rag.py`, view `AskView`
+- [x] Strict response schema (structured outputs); malformed output → single uncited segment; out-of-range citations degrade to prose; upstream AI failure → 503, never 500; empty archive answers gracefully without calling Claude
 
-- [ ] Export endpoints/flow: markdown, plain text, JSON (links preserved), original audio
+## 4. Export (PRD v1 #12) — ✅ done 2026-06-11
+
+- [x] `GET /filaments/{id}/export?format=markdown|text|json` (rendered file download, `core/exports.py`); `?format=audio` → pre-signed S3 GET URL (voice only)
 - [ ] (Obsidian-compatible export with `[[wikilinks]]` + YAML frontmatter is v1.1)
 
-## 5. Periodic sweeps (failure-recovery backstop)
+## 5. Periodic sweeps (failure-recovery backstop) — ✅ done 2026-06-11
 
-- [ ] **Decide scheduling first**: Celery Beat (4th always-on service) vs. Railway cron + management commands (PRD open Q #9 — still open)
-- [ ] **Stuck-`processing` sweep** — `updated_at` stale ~30 min → requeue once (via the same status-gated path as `/process`), then mark `failed` (`pipeline_attempts`)
-- [ ] **Orphaned-upload sweep** — `pending_upload` rows + S3 objects older than ~24 h → delete
-- [ ] **Soft-delete sweep** — `deleted_at` older than ~30 days → hard-delete row (cascades) + S3 object
+**Decision (settled 2026-06-11):** Railway cron + management commands (no Celery Beat; see tradeoffs-discussed.md). Three cron jobs share the `web` service image and exit cleanly — no 4th always-on process.
+
+**Railway cron expressions** (set in the Railway dashboard on a dedicated cron service):
+
+| Command                                   | Schedule       | Notes                                                            |
+| ----------------------------------------- | -------------- | ---------------------------------------------------------------- |
+| `python manage.py sweep_stuck`            | `*/30 * * * *` | Every 30 min; re-enqueues up to 3 attempts then marks `failed`   |
+| `python manage.py sweep_orphaned_uploads` | `0 3 * * *`    | Nightly 03:00 UTC; cleans `pending_upload` rows older than 24 h  |
+| `python manage.py sweep_soft_deletes`     | `0 3 * * *`    | Nightly 03:00 UTC; hard-deletes rows with `deleted_at` > 30 days |
+
+- [x] **Scheduling decision**: Railway cron + management commands (not Celery Beat)
+- [x] **Stuck-`processing` sweep** — `updated_at` stale > 30 min → requeue (up to `MAX_ATTEMPTS=3`), then `failed`; in `core/management/commands/sweep_stuck.py`
+- [x] **Orphaned-upload sweep** — `pending_upload` rows older than 24 h → S3 delete + hard-delete; in `core/management/commands/sweep_orphaned_uploads.py`
+- [x] **Soft-delete sweep** — `deleted_at` older than 30 days → S3 delete + hard-delete (CASCADE); in `core/management/commands/sweep_soft_deletes.py`
 
 ## 6. Deployment (Railway)
 
 - [ ] Provision the **pgvector template** Postgres (not base Postgres) from day one
-- [ ] Three explicit services: Django web (gunicorn), Celery worker, Redis — plus the sweep scheduler per the decision above
+- [ ] Four Railway services: Django web (gunicorn), Celery worker, Redis, and a cron service (same image; three cron jobs per the schedule in §5 above)
 - [ ] Env vars on the platform (secret list: backend-planning-doc → Config & Environment)
-- [ ] Lock down prod CORS origins; optional `/health` endpoint for Railway
+- [ ] Lock down prod CORS origins
+- [x] `/health` endpoint (public, `{"status": "ok"}`) and `Procfile` (web + worker) — added 2026-06-11
 
 ## 7. Mobile — finish the capture loop
 
@@ -77,29 +89,40 @@ The prototype (2026-06-10) already covers: auth gate + Google sign-in, Timeline 
 - [ ] **Record screen** — real voice capture (`npx expo install expo-audio`), waveform, pause/resume, bookmark (mockup: recording.png)
 - [ ] **Upload handshake** — recorded file → pre-signed S3 PUT → `POST /filaments/{id}/process` (text notes already use the create→process path)
 - [ ] **Audio player** on voice detail (stream from S3 presigned URL; compact variant on cards)
-- [ ] **Ask AI screen** — replace placeholder with the segmented-answer renderer + source cards + follow-ups (mockups: askai1–2.png), once `/ask` exists
+- [ ] **Ask AI screen** — replace placeholder with the segmented-answer renderer + source cards + follow-ups (mockups: askai1–2.png) — `/ask` is live now, so this is unblocked
 - [ ] **Document/URL capture UI** (file picker + URL field)
 - [ ] **Offline queue** — record while offline, upload on reconnect
 - [ ] **Siri App Intent spike** (PRD open Q #1) — the hands-free trigger; needs a small Swift module
 
-## 8. Cleanup chores (small, anytime)
+## 8. Web client (v1.1 — pulled forward, built 2026-06-11)
 
-- [ ] Delete the stray `venv/` at the repo root (`.venv` is the real environment; `venv/` only has Django and breaks `manage.py`)
-- [ ] `SIMPLE_JWT` refresh lifetime is 7 days; planning doc suggests 30–90 for a personal tool (re-auth rarely)
-- [ ] `BLACKLIST_AFTER_ROTATION=True` but `rest_framework_simplejwt.token_blacklist` isn't in `INSTALLED_APPS` — either add the app or drop the setting (currently a silent no-op)
-- [ ] `requirements.txt` ships `gunicorn` — add a `Procfile`/start command when deploying
+Next.js app in `web/` per `.claude/docs/web-planning-doc.md`: BFF auth (httpOnly cookies + `/api/backend` proxy), Timeline, Detail (incl. audio playback + export), Capture (text + PDF drag-and-drop), Search, Ask. `npm run dev` in `web/` (expects backend on `DJANGO_API_URL`, default `localhost:8000`).
+
+Remaining (config, no code):
+
+- [x] **S3 bucket CORS** — allow `PUT` from `http://localhost:3000` + the deployed domain; browser uploads fail preflight without it (mobile never needed this)
+- [x] **Google OAuth origins** — add `http://localhost:3000` (and the prod domain) to Authorized JavaScript origins on the existing web client ID
+- [ ] **Deploy** — Vercel project; env vars `DJANGO_API_URL` + `NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+- [ ] **URL capture** — blocked on the backend URL-capture API (`core/tasks.py` dispatch is forward-compatible; `POST /filaments` doesn't accept a URL yet)
+
+## 9. Cleanup chores — ✅ done 2026-06-11
+
+- [x] Deleted the stray `venv/` at the repo root (`.venv` is the real environment)
+- [x] `SIMPLE_JWT` refresh lifetime 7 → 60 days (planning doc suggests 30–90 for a personal tool)
+- [x] Dropped the no-op `BLACKLIST_AFTER_ROTATION` (token_blacklist app never installed; blacklisting optional at single-user scale per planning doc)
+- [x] Added `Procfile` (gunicorn web + celery worker)
 
 ---
 
 ## Open decisions index
 
-| Decision | Owner | Blocks |
-|---|---|---|
-| Claude extraction prompt design | Ross | Pipeline summarize/tags steps |
-| Auto-link similarity threshold | Ross (experiment) | Pipeline auto-link step |
-| Sweep scheduling (Beat vs. Railway cron) | Ross | All three sweeps |
-| Audio size/compression/chunking (PRD #5) | Ross | Mobile record/upload polish |
-| Siri App Intent spike (PRD #1) | Ross | Hands-free capture |
-| Mockups vs. design-system tokens (page surface, tag style, date headers) | Ross | Cosmetic only — prototype follows the token spec; mockups differ (see `.claude/screenshots/`) |
+| Decision                                                                 | Owner                 | Blocks                                                                                        |
+| ------------------------------------------------------------------------ | --------------------- | --------------------------------------------------------------------------------------------- |
+| Claude extraction prompt design                                          | ✅ Settled 2026-06-11 | Implemented; prompt prose tunable in `core/tasks.py`                                          |
+| Auto-link similarity threshold                                           | ✅ Settled 2026-06-11 | Implemented at 0.75 / top 5; revisit against real captures                                    |
+| Sweep scheduling (Beat vs. Railway cron)                                 | ✅ Settled 2026-06-11 | Railway cron; three management commands implemented                                           |
+| Audio size/compression/chunking (PRD #5)                                 | Ross                  | Mobile record/upload polish                                                                   |
+| Siri App Intent spike (PRD #1)                                           | Ross                  | Hands-free capture                                                                            |
+| Mockups vs. design-system tokens (page surface, tag style, date headers) | Ross                  | Cosmetic only — prototype follows the token spec; mockups differ (see `.claude/screenshots/`) |
 
 Everything else deferred (Sentry, custom error handler, HNSW tuning, graph view) is logged in backend-planning-doc → Deferred Decisions.
