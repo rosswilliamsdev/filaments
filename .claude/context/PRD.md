@@ -64,7 +64,8 @@ v1 is done when I can say "Hey Siri, new filament," speak a thought, and have it
 
 **Knowledge Graph Layer**
 - Timeline view (chronological feed, filterable by type/tag/topic)
-- Individual filament view (transcript, summary, key ideas, action items, tags, linked filaments, audio playback, source document viewer)
+- Individual filament view (transcript, summary, key ideas, action items, tags, linked filaments, source document viewer)
+  - _Voice is capture-only: the recording is transcribed then discarded, so there's no audio playback (decision 2026-06-13)._
 - Full-text search across all filaments
 - "Ask AI" — natural language questions across entire knowledge base
 - Editable tags and annotations
@@ -85,7 +86,8 @@ One backend, one client (iOS) reading/writing through a REST API. The server is 
 - Sign in with Google. The iOS app obtains a Google ID token; the backend verifies it, checks the email against an allowlist, and issues its own SimpleJWT pair. See `backend-planning-doc.md` → Auth & Authorization.
 
 **Export**
-- Export as markdown, plain text, JSON (with links preserved), original audio
+- Export as markdown, plain text, JSON (with links preserved)
+  - _No original-audio export: voice recordings aren't retained past transcription (decision 2026-06-13)._
 - Obsidian-compatible export (markdown + `[[wikilinks]]` + YAML frontmatter)
 
 ### Out of Scope
@@ -113,7 +115,7 @@ One backend, one client (iOS) reading/writing through a REST API. The server is 
 5. Auto-tagging (Claude API)
 6. Embedding generation + auto-linking (OpenAI embeddings + pgvector)
 7. Document upload (PDF + plain text + URL extraction)
-8. Individual filament view with transcript, summary, links, playback
+8. Individual filament view with transcript, summary, links
 9. Timeline view with filters
 10. Full-text search
 11. Basic "Ask AI" (query your knowledge base)

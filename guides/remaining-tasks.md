@@ -21,7 +21,7 @@ Snapshot of what's left between the current state and the v1 finish line: "say '
 | Export                      | ✅ `GET /filaments/{id}/export?format=markdown\|text\|json\|audio`                                                                                      |
 | Periodic sweeps             | ✅ Three management commands implemented; Railway cron expressions below                                                                                |
 | Deployment (Railway)        | ❌ Not started                                                                                                                                          |
-| Mobile voice capture        | ❌ Record screen, upload handshake, audio player — needs expo-audio + S3                                                                                |
+| Mobile voice capture        | ✅ Record screen + S3 upload handshake (expo-audio). Audio is transcribe-then-discard — no playback/audio player (decision 2026-06-13)                    |
 
 ---
 
@@ -86,9 +86,9 @@ Celery chain in `core/tasks.py`, replacing the stub. Spec: backend-planning-doc 
 
 The prototype (2026-06-10) already covers: auth gate + Google sign-in, Timeline (date groups, filters, infinite scroll), Detail (summary/key ideas/action-item toggles/transcript/links), text-note Capture, Search, and status polling. Remaining per `frontend-planning-doc.md`:
 
-- [ ] **Record screen** — real voice capture (`npx expo install expo-audio`), waveform, pause/resume, bookmark (mockup: recording.png)
-- [ ] **Upload handshake** — recorded file → pre-signed S3 PUT → `POST /filaments/{id}/process` (text notes already use the create→process path)
-- [ ] **Audio player** on voice detail (stream from S3 presigned URL; compact variant on cards)
+- [x] **Record screen** — real voice capture (expo-audio), live metering waveform, pause/resume, bookmark (mockup: recording.png) — 2026-06-13
+- [x] **Upload handshake** — recorded `.m4a` → pre-signed S3 PUT → `POST /filaments/{id}/process` (`useVoiceUpload`) — 2026-06-13
+- [x] ~~**Audio player** on voice detail~~ **Cut (2026-06-13):** voice is capture-only. The pipeline transcribes then deletes the S3 object (`tasks._discard_audio`), so there's no audio to play back. The `?format=audio` export endpoint and `generate_download_url` were removed.
 - [ ] **Ask AI screen** — replace placeholder with the segmented-answer renderer + source cards + follow-ups (mockups: askai1–2.png) — `/ask` is live now, so this is unblocked
 - [ ] **Document/URL capture UI** (file picker + URL field)
 - [ ] **Offline queue** — record while offline, upload on reconnect
@@ -96,7 +96,9 @@ The prototype (2026-06-10) already covers: auth gate + Google sign-in, Timeline 
 
 ## 8. Web client (v1.1 — pulled forward, built 2026-06-11)
 
-Next.js app in `web/` per `.claude/docs/web-planning-doc.md`: BFF auth (httpOnly cookies + `/api/backend` proxy), Timeline, Detail (incl. audio playback + export), Capture (text + PDF drag-and-drop), Search, Ask. `npm run dev` in `web/` (expects backend on `DJANGO_API_URL`, default `localhost:8000`).
+Next.js app in `web/` per `.claude/docs/web-planning-doc.md`: BFF auth (httpOnly cookies + `/api/backend` proxy), Timeline, Detail (incl. export), Capture (text + PDF drag-and-drop), Search, Ask. `npm run dev` in `web/` (expects backend on `DJANGO_API_URL`, default `localhost:8000`).
+
+> ⚠️ **Web audio player is now dead code** (2026-06-13). `web/src/app/(app)/filament/[id]/page.tsx` + `useAudioUrl` (`web/src/lib/hooks.ts`) call the removed `?format=audio` endpoint to render an `<audio>` element. Since voice audio is deleted post-transcription, this can never resolve — needs removing. See note below.
 
 Remaining (config, no code):
 

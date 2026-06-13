@@ -84,7 +84,7 @@ First launch (or after token expiry with no valid refresh): a single screen — 
 ### Secondary Flows
 
 - **Browse:** Timeline (mockup 3) — date-grouped feed, type filter pills (All/Voice/Docs/Text), infinite scroll. Tap card → Detail.
-- **Read:** Detail (mockups 2, 4, 7) — type badge, audio player (voice), transcript/body, collapsible Key Ideas + Action Items, editable tags, Linked Filaments with match score + "linked N ago."
+- **Read:** Detail (mockups 2, 4, 7) — type badge, transcript/body, collapsible Key Ideas + Action Items, editable tags, Linked Filaments with match score + "linked N ago." (No audio player — voice is transcribe-then-discard, decision 2026-06-13.)
 - **Ask AI:** (mockups 5, 6) — single query field → segmented answer with superscript citations → horizontally-scrolling source cards (DOCUMENT/PDF/AUDIO badges) → tappable follow-ups. Renderer maps the `/ask` segmented-JSON shape directly; a citation segment becomes a superscript linking to its source card.
 - **Search:** (mockup 8) — query field + type/date filters; empty state with illustration and prompt. Results render as timeline-style cards.
 
@@ -119,7 +119,7 @@ Expo Router navigation params carry filament IDs, search query/filters, and time
 Personal scale — hundreds to low-thousands of filaments. No frontend caching beyond Query's defaults.
 
 - **Timeline:** cursor `useInfiniteQuery`, never fetch-all. Tags and links arrive prefetched on the list payload (backend `prefetch_related`) — client must not re-fetch per card (no client-side N+1).
-- **Audio:** stream from the S3 presigned URL; don't download the whole file to play. Compact player variant on cards = play button + duration only.
+- **Recording upload:** PUT the captured `.m4a` straight to the presigned S3 URL — bytes never pass through Django. (No playback path: the pipeline discards the audio after transcription, decision 2026-06-13.)
 - **Source viewer:** lazy-load PDF/image source on demand in Detail, not on list render.
 - **Polling:** stop intervals on `done`/`failed`; don't leave a `refetchInterval` running on a settled query.
 

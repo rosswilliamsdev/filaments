@@ -545,7 +545,7 @@ npx expo install @react-native-google-signin/google-signin
 # Fonts (design system: Lora / Inter / JetBrains Mono):
 npx expo install expo-font @expo-google-fonts/lora @expo-google-fonts/inter @expo-google-fonts/jetbrains-mono
 
-# Audio capture/playback + filesystem for offline queue (add when building Record):
+# Audio capture (no playback — voice is transcribe-then-discard) + filesystem for offline queue:
 npx expo install expo-audio expo-file-system
 
 # Dev client (required — see B8):

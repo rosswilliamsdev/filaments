@@ -4,7 +4,7 @@ _Created 2026-06-11. Companion to `backend-planning-doc.md` and `frontend-planni
 
 ## Goal
 
-A web companion to the iOS app that reads and writes the same backend. Capture on web is **text notes and bulk document uploads only — no voice recording** (URL capture is deferred until its backend API lands). Voice filaments captured on mobile still render fully on web (transcript, summary, audio playback from the presigned S3 URL); only the *recording* affordance is absent.
+A web companion to the iOS app that reads and writes the same backend. Capture on web is **text notes and bulk document uploads only — no voice recording** (URL capture is deferred until its backend API lands). Voice filaments captured on mobile render on web as transcript + summary; there's no audio playback because the recording is discarded after transcription (decision 2026-06-13).
 
 "Sync" requires no new backend machinery: both clients are stateless consumers of `/api/v1` against the same Postgres. Freshness comes from TanStack Query's `refetchOnWindowFocus` plus the existing status polling.
 
@@ -60,7 +60,7 @@ Same five surfaces as mobile, adapted for web idioms. Per `.claude/rules/fronten
 |---|---|---|
 | Sign-in | `/sign-in` | Google button; redirect target preserved in `?next=` |
 | Timeline | `/` | Cursor-paginated cards, date groups. Filters (type/tag/pinned/archived) live in **query params** so filtered views deep-link and survive refresh. Infinite scroll with a "Load more" fallback button. |
-| Detail | `/filament/[id]` | Summary, key ideas, action-item toggles, editable tags, linked filaments, transcript. Voice filaments get the audio player (`<audio>` streaming the presigned URL). |
+| Detail | `/filament/[id]` | Summary, key ideas, action-item toggles, editable tags, linked filaments, transcript. (No audio player — voice recordings are discarded after transcription, decision 2026-06-13.) |
 | Capture | `/capture` | **The web-divergent screen.** Two modes in one surface: text note (textarea, ⌘/Ctrl+Enter submits) and documents (**bulk** multi-file picker **plus drag-and-drop onto the page** — PDF, Word `.docx`, and Markdown). No record tab; URL field deferred until the backend URL-capture API lands. |
 | Search | `/search` | Query + filters in the URL (`?q=…&type=…`); results as cards. |
 | Ask | `/ask` | Same placeholder as mobile until `/ask` ships (backend §3 of `remaining-tasks.md`); then the segmented-answer renderer with source cards. |
@@ -84,7 +84,7 @@ Client-side guards before step 1: file-type allowlist (mirrors `core/s3.py` `ACC
 
 The read path needs **zero API changes**. The write path took a small, additive one: document create accepts a `filename` and the pipeline learned two new extractors (`.docx` via python-docx, Markdown/text passthrough) — see `core/s3.py`, `core/views.py`, `core/tasks.py`. The full list of real work outside `web/`:
 
-1. ~~**S3 bucket CORS rule** — allow `PUT` (+ `GET` for audio playback) from `http://localhost:3000` and the Vercel domain.~~ **Done** — `PUT` and `GET` are configured for the web origins.
+1. ~~**S3 bucket CORS rule** — allow `PUT` from `http://localhost:3000` and the Vercel domain.~~ **Done.** (The `GET` rule was for audio playback, now removed — voice audio is discarded after transcription, decision 2026-06-13; the rule is harmless but unused.)
 2. **Google OAuth web client ID** — new credential in the existing GCP project; add its client ID to the audience list Django's verifier accepts (it currently expects the iOS/dev client IDs).
 3. **Vercel env vars** — `DJANGO_API_URL`, `GOOGLE_WEB_CLIENT_ID`, cookie-signing secret if sessions are wrapped.
 4. Nothing else until `/ask` and Export land — those are backend roadmap items that unblock screens on *both* clients.
@@ -94,7 +94,7 @@ The read path needs **zero API changes**. The write path took a small, additive 
 | Phase | Scope | Done when |
 |---|---|---|
 | 1. Skeleton + auth | Next.js scaffold in `web/`, tokens/fonts, BFF auth + proxy routes, sign-in/out | Google sign-in round-trips locally against the dev backend; protected routes redirect |
-| 2. Read path | Timeline, Detail (incl. audio playback of mobile-captured voice), Search | A filament captured on the phone appears and plays on web |
+| 2. Read path | Timeline, Detail (transcript + summary of mobile-captured voice), Search | A filament captured on the phone appears on web with its transcript |
 | 3. Write path | Text capture, tag/action-item/pin/archive/delete mutations | Text note created on web shows enriched on mobile |
 | 4. Document upload | S3 CORS, bulk drag-and-drop + multi-file picker (PDF/Word/Markdown), per-file status polling | A batch of mixed-format docs dragged onto web is processed and auto-linked, each reporting its own status |
 | 5. Polish | Keyboard shortcuts, empty/error states, reduced-motion, APCA contrast pass per `frontend-rules.md` | Audit checklist clean |

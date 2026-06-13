@@ -228,12 +228,9 @@ All components built as custom React Native / NativeWind components. No external
 - **Header:** Lora text-xl
 - **Actions:** right-aligned, primary + secondary buttons
 
-### Audio Player
-- **Inline component** within filament detail view
-- **Background:** brand-50
-- **Radius:** radius-md
-- **Controls:** play/pause button (brand-600), progress bar (brand-200 track, brand-600 fill), timestamp (font-mono text-xs)
-- **Compact variant** for timeline cards: small play button + duration label only
+### ~~Audio Player~~ — removed (2026-06-13)
+Voice is capture-only: recordings are transcribed then discarded, so there's no
+audio to play back. No audio-player component on detail or timeline cards.
 
 ## Usage Notes
 
