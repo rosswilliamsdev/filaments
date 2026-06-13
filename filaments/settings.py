@@ -34,6 +34,24 @@ DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 
+# Railway (and most PaaS) terminate TLS at the edge and forward plain HTTP, so
+# Django must (a) trust the X-Forwarded-Proto header to know the request was HTTPS
+# and (b) trust the deployed origin for CSRF on admin/session POSTs.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+
+# --- Production security hardening (see guides/railway-deploy.md §0c) ---
+# These only kick in once you're served over HTTPS. They're a real trade-off:
+# too strict and you can lock yourself out during setup; too loose and you ship
+# an insecure prod. Implement the block below to taste.
+if not DEBUG:
+    # TODO(you): set production security flags here. Consider:
+    #   SECURE_SSL_REDIRECT          – force http->https? (breaks Railway healthchecks if misconfigured)
+    #   SESSION_COOKIE_SECURE / CSRF_COOKIE_SECURE – cookies HTTPS-only
+    #   SECURE_HSTS_SECONDS          – how long browsers force HTTPS (start small, e.g. 3600, then raise)
+    #   SECURE_HSTS_INCLUDE_SUBDOMAINS / SECURE_HSTS_PRELOAD
+    pass
+
 
 # Application definition
 

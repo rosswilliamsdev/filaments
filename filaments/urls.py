@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 from accounts.views import GoogleAuthView
@@ -22,10 +23,17 @@ from accounts.views import GoogleAuthView
 api_v1 = [
     path("auth/google", GoogleAuthView.as_view()),
     path("auth/token/refresh", TokenRefreshView.as_view()),
-    path("", include("core.urls")),   # /filaments, /tags, /search
+    path("", include("core.urls")),   # /filaments, /tags, /search, /ask
 ]
+
+
+def health(_request):
+    """Unauthenticated liveness probe for Railway (backend doc → Observability)."""
+    return JsonResponse({"status": "ok"})
+
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("health", health),
     path("api/v1/", include((api_v1, "v1"))),
 ]
