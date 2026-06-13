@@ -37,7 +37,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import ActionItem, Filament, FilamentLink, Tag
-from .s3 import download_object
+from .s3 import delete_object, download_object
 
 logger = logging.getLogger(__name__)
 
@@ -159,10 +159,11 @@ def _transcribe_voice(filament):
     if not filament.source_key:
         raise NonRetryableError("voice filament has no source_key")
 
-    audio = download_object(filament.source_key)
+    source_key = filament.source_key
+    audio = download_object(source_key)
     response = get_openai_client().audio.transcriptions.create(
         model=WHISPER_MODEL,
-        file=(filament.source_key.rsplit("/", 1)[-1], audio),
+        file=(source_key.rsplit("/", 1)[-1], audio),
         response_format="verbose_json",
     )
     # `speaker` stays null in v1: whisper-1 has no diarization and
@@ -173,6 +174,33 @@ def _transcribe_voice(filament):
     ]
     filament.body = (response.text or "").strip()
     filament.save(update_fields=["transcript", "body", "updated_at"])
+
+    _discard_audio(filament, source_key)
+
+
+def _discard_audio(filament, source_key):
+    """
+    Voice audio is transient — we keep the transcript, not the recording. Once
+    the transcript is persisted the guard in `_transcribe_voice` blocks any
+    re-transcription, so the S3 object is never needed again and we delete it now
+    instead of storing it.
+
+    Best-effort: a delete failure leaves the object in place (the soft-delete
+    sweep still reaps it when the filament is deleted), so we only null
+    `source_key` once the object is actually gone — keeping a live key pointing
+    at a live object for the sweep to find.
+    """
+    if not settings.USE_S3:
+        return
+    try:
+        delete_object(source_key)
+    except Exception:
+        logger.warning(
+            "could not delete transcribed audio %s; leaving for the sweep", source_key
+        )
+        return
+    filament.source_key = None
+    filament.save(update_fields=["source_key", "updated_at"])
 
 
 def _extract_document(filament):

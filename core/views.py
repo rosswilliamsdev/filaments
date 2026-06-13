@@ -22,7 +22,6 @@ from .rag import answer_question
 from .s3 import (
     build_source_key,
     document_extension,
-    generate_download_url,
     generate_upload_url,
 )
 from .serializers import (
@@ -148,29 +147,16 @@ class FilamentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def export(self, request, pk=None):
         """
-        PRD v1 #12: ?format=markdown|text|json downloads a rendered file;
-        ?format=audio returns a pre-signed GET URL for the original recording.
+        PRD v1 #12: ?format=markdown|text|json downloads a rendered file.
+        (Original audio isn't exportable — voice recordings are deleted once
+        transcribed; see tasks._discard_audio.)
         """
         filament = self.get_object()
         fmt = request.query_params.get("format", "markdown")
 
-        if fmt == "audio":
-            if filament.type != Filament.Type.VOICE or not filament.source_key:
-                return Response(
-                    {"error": "only voice filaments have original audio"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            try:
-                url = generate_download_url(filament.source_key)
-            except ImproperlyConfigured as exc:
-                return Response(
-                    {"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
-                )
-            return Response({"url": url})
-
         if fmt not in EXPORT_FORMATS:
             return Response(
-                {"error": f"unknown format '{fmt}' (markdown, text, json, audio)"},
+                {"error": f"unknown format '{fmt}' (markdown, text, json)"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         render, content_type, extension = EXPORT_FORMATS[fmt]

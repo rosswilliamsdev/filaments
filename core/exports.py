@@ -1,7 +1,6 @@
 """
 Per-filament export (PRD v1 #12): markdown, plain text, JSON (links
-preserved). Original-audio export is a presigned S3 GET handled in the view.
-Obsidian-flavored export ([[wikilinks]] + YAML frontmatter) is v1.1.
+preserved). Obsidian-flavored export ([[wikilinks]] + YAML frontmatter) is v1.1.
 """
 
 import json

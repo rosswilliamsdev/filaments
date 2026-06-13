@@ -325,6 +325,9 @@ class PipelineIntegrationTests(TestCase):
             patch("core.tasks.get_anthropic_client", return_value=anthropic_client),
             patch("core.tasks.get_openai_client", return_value=openai_client),
             patch("core.tasks.download_object", return_value=b"raw-bytes"),
+            # Voice transcription deletes the S3 object once transcribed; stub it
+            # so tests never touch real S3 (USE_S3 is True via .env under test).
+            patch("core.tasks.delete_object"),
         )
 
     def test_text_filament_full_chain(self):
@@ -355,8 +358,8 @@ class PipelineIntegrationTests(TestCase):
         openai_client = MagicMock()
         openai_client.embeddings.create.return_value = embedding_response(vec(1.0, 0.0))
 
-        p1, p2, p3 = self._clients(anthropic_client, openai_client)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._clients(anthropic_client, openai_client)
+        with p1, p2, p3, p4:
             build_pipeline(str(filament.id)).apply()
 
         filament.refresh_from_db()
@@ -398,8 +401,8 @@ class PipelineIntegrationTests(TestCase):
         )
         openai_client.embeddings.create.side_effect = RuntimeError("embedding service down")
 
-        p1, p2, p3 = self._clients(anthropic_client, openai_client)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._clients(anthropic_client, openai_client)
+        with p1, p2, p3, p4:
             build_pipeline(str(filament.id)).apply()
 
         filament.refresh_from_db()
@@ -418,8 +421,8 @@ class PipelineIntegrationTests(TestCase):
         # steps must not re-execute — the expensive calls aren't re-paid.
         filament.status = Filament.Status.PROCESSING
         filament.save(update_fields=["status"])
-        p1, p2, p3 = self._clients(anthropic_client, openai_client)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._clients(anthropic_client, openai_client)
+        with p1, p2, p3, p4:
             build_pipeline(str(filament.id)).apply()
 
         filament.refresh_from_db()
@@ -428,6 +431,57 @@ class PipelineIntegrationTests(TestCase):
         self.assertEqual(anthropic_client.messages.create.call_count, 1)  # summary persisted
         self.assertEqual(openai_client.embeddings.create.call_count, 2)  # backfill attempted
         self.assertIsNone(filament.embedding)  # still degraded
+
+    @override_settings(USE_S3=True)
+    def test_voice_audio_deleted_after_transcription(self):
+        # Audio is transient: we keep the transcript, not the recording. The S3
+        # object is deleted as soon as it's transcribed and the key forgotten.
+        filament = Filament.objects.create(
+            type="voice", title="Memo", status=Filament.Status.PROCESSING,
+            source_key="voice/abc.m4a",
+        )
+        anthropic_client = MagicMock()
+        anthropic_client.messages.create.return_value = claude_response(EXTRACTION)
+        openai_client = MagicMock()
+        openai_client.audio.transcriptions.create.return_value = whisper_response(
+            "hello world", [{"start": 0.0, "end": 2.5, "text": "hello world"}]
+        )
+        openai_client.embeddings.create.return_value = embedding_response(vec(1.0, 0.0))
+
+        p1, p2, p3, _ = self._clients(anthropic_client, openai_client)
+        with p1, p2, p3, patch("core.tasks.delete_object") as delete:
+            build_pipeline(str(filament.id)).apply()
+
+        delete.assert_called_once_with("voice/abc.m4a")
+        filament.refresh_from_db()
+        self.assertIsNone(filament.source_key)  # key forgotten once the object is gone
+        self.assertEqual(filament.status, Filament.Status.DONE)
+        self.assertEqual(filament.body, "hello world")  # transcript survives
+
+    @override_settings(USE_S3=True)
+    def test_transcribed_audio_delete_failure_keeps_key_for_sweep(self):
+        # Best-effort delete: if S3 errors, the transcript is still saved and the
+        # key is kept so the soft-delete sweep can reap the object later.
+        filament = Filament.objects.create(
+            type="voice", title="Memo", status=Filament.Status.PROCESSING,
+            source_key="voice/abc.m4a",
+        )
+        anthropic_client = MagicMock()
+        anthropic_client.messages.create.return_value = claude_response(EXTRACTION)
+        openai_client = MagicMock()
+        openai_client.audio.transcriptions.create.return_value = whisper_response(
+            "hello world", [{"start": 0.0, "end": 2.5, "text": "hello world"}]
+        )
+        openai_client.embeddings.create.return_value = embedding_response(vec(1.0, 0.0))
+
+        p1, p2, p3, _ = self._clients(anthropic_client, openai_client)
+        with p1, p2, p3, patch("core.tasks.delete_object", side_effect=RuntimeError("s3 down")):
+            build_pipeline(str(filament.id)).apply()
+
+        filament.refresh_from_db()
+        self.assertEqual(filament.status, Filament.Status.DONE)  # delete failure isn't fatal
+        self.assertEqual(filament.body, "hello world")
+        self.assertEqual(filament.source_key, "voice/abc.m4a")  # kept for the sweep
 
     def test_transcription_failure_marks_failed_and_stops_chain(self):
         filament = Filament.objects.create(
@@ -438,8 +492,8 @@ class PipelineIntegrationTests(TestCase):
         openai_client = MagicMock()
         openai_client.audio.transcriptions.create.side_effect = RuntimeError("whisper down")
 
-        p1, p2, p3 = self._clients(anthropic_client, openai_client)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._clients(anthropic_client, openai_client)
+        with p1, p2, p3, p4:
             with self.assertRaises(RuntimeError):
                 build_pipeline(str(filament.id)).apply()
 
@@ -459,8 +513,8 @@ class PipelineIntegrationTests(TestCase):
         openai_client = MagicMock()
         openai_client.embeddings.create.return_value = embedding_response(vec(1.0, 0.0))
 
-        p1, p2, p3 = self._clients(anthropic_client, openai_client)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._clients(anthropic_client, openai_client)
+        with p1, p2, p3, p4:
             build_pipeline(str(filament.id)).apply()
 
         filament.refresh_from_db()
@@ -601,23 +655,12 @@ class ExportTests(AuthedAPITestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn("attention is finite", res.content.decode())
 
-    def test_audio_export_returns_presigned_url_for_voice_only(self):
-        f, voice = self._filament()
-        voice.source_key = f"voice/{voice.id}.m4a"
-        voice.save(update_fields=["source_key"])
-
-        with patch("core.views.generate_download_url", return_value="https://signed"):
-            res = self.client.get(f"/api/v1/filaments/{voice.id}/export?format=audio")
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.data["url"], "https://signed")
-
-        res = self.client.get(f"/api/v1/filaments/{f.id}/export?format=audio")
-        self.assertEqual(res.status_code, 400)  # text filament has no audio
-
     def test_unknown_format_rejected(self):
+        # Audio is no longer exportable — recordings are deleted post-transcription.
         f, _ = self._filament()
-        res = self.client.get(f"/api/v1/filaments/{f.id}/export?format=docx")
-        self.assertEqual(res.status_code, 400)
+        for fmt in ("docx", "audio"):
+            res = self.client.get(f"/api/v1/filaments/{f.id}/export?format={fmt}")
+            self.assertEqual(res.status_code, 400, fmt)
 
 
 class HealthTests(APITestCase):

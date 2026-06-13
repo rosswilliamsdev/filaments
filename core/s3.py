@@ -66,15 +66,6 @@ def generate_upload_url(key: str, expires: int = 3600) -> str:
     )
 
 
-def generate_download_url(key: str, expires: int = 3600) -> str:
-    """Pre-signed GET for streaming/exporting the original audio or PDF."""
-    return _client().generate_presigned_url(
-        "get_object",
-        Params={"Bucket": settings.AWS_STORAGE_BUCKET_NAME, "Key": key},
-        ExpiresIn=expires,
-    )
-
-
 def download_object(key: str) -> bytes:
     """Fetch an uploaded source file (audio/PDF) for pipeline processing."""
     response = _client().get_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=key)
