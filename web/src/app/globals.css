@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/* Filaments design tokens — source of truth: .claude/context/design-system.md */
+@theme {
+  /* Brand (warm editorial) */
+  --color-brand-50: #faf8f6;
+  --color-brand-100: #f3efe9;
+  --color-brand-200: #e6ddd3;
+  --color-brand-300: #d4c5b5;
+  --color-brand-400: #b8a48e;
+  --color-brand-500: #9c8368;
+  --color-brand-600: #7d6750;
+  --color-brand-700: #5e4d3b;
+  --color-brand-800: #3f3328;
+  --color-brand-900: #231c16;
+
+  /* Neutral */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #fafaf9;
+  --color-neutral-100: #f5f5f4;
+  --color-neutral-200: #e7e5e4;
+  --color-neutral-300: #d6d3d1;
+  --color-neutral-400: #a8a29e;
+  --color-neutral-500: #78716c;
+  --color-neutral-600: #57534e;
+  --color-neutral-700: #44403c;
+  --color-neutral-800: #292524;
+  --color-neutral-900: #1c1917;
+
+  /* Semantic */
+  --color-error: #dc2626;
+  --color-error-light: #fef2f2;
+  --color-success: #16a34a;
+  --color-success-light: #f0fdf4;
+  --color-warning: #d97706;
+  --color-warning-light: #fffbeb;
+  --color-info: #2563eb;
+  --color-info-light: #eff6ff;
+
+  /* Surfaces */
+  --color-surface-page: #ffffff;
+  --color-surface-raised: #fafaf9;
+  --color-surface-overlay: #ffffff;
+  --color-surface-input: #f5f5f4;
+
+  /* Filament types */
+  --color-type-voice: #7c3aed;
+  --color-type-document: #2563eb;
+  --color-type-text: #0d9488;
+
+  /* Fonts (variables injected by next/font in layout.tsx) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-lora), ui-serif, Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+html {
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--color-surface-page);
+  color: var(--color-neutral-900);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2 {
+  scroll-margin-top: 80px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
