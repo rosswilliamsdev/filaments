@@ -12,7 +12,6 @@ import {
   TypeBadge,
 } from "@/components/ui";
 import {
-  useAudioUrl,
   useDeleteFilament,
   useFilament,
   usePatchFilament,
@@ -51,11 +50,6 @@ function Detail({ filament }: { filament: FilamentDetail }) {
   const remove = useDeleteFilament();
   const toggleItem = useToggleActionItem(filament.id);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  const audio = useAudioUrl(
-    filament.id,
-    filament.type === "voice" && filament.status === "done",
-  );
 
   return (
     <article className="flex flex-col gap-6">
@@ -127,14 +121,6 @@ function Detail({ filament }: { filament: FilamentDetail }) {
 
       {filament.status === "failed" && (
         <ErrorNote message="Processing failed for this filament. Retry from the mobile app, or check the worker logs." />
-      )}
-
-      {audio.data?.url && (
-        <div className="rounded-md bg-brand-50 p-3">
-          <audio controls preload="metadata" src={audio.data.url} className="w-full">
-            Your browser can’t play this recording.
-          </audio>
-        </div>
       )}
 
       {filament.summary && (

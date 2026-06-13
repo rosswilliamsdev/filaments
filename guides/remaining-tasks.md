@@ -98,7 +98,7 @@ The prototype (2026-06-10) already covers: auth gate + Google sign-in, Timeline 
 
 Next.js app in `web/` per `.claude/docs/web-planning-doc.md`: BFF auth (httpOnly cookies + `/api/backend` proxy), Timeline, Detail (incl. export), Capture (text + PDF drag-and-drop), Search, Ask. `npm run dev` in `web/` (expects backend on `DJANGO_API_URL`, default `localhost:8000`).
 
-> ⚠️ **Web audio player is now dead code** (2026-06-13). `web/src/app/(app)/filament/[id]/page.tsx` + `useAudioUrl` (`web/src/lib/hooks.ts`) call the removed `?format=audio` endpoint to render an `<audio>` element. Since voice audio is deleted post-transcription, this can never resolve — needs removing. See note below.
+> ✅ **Web audio player removed** (2026-06-13). The `<audio>` element and `useAudioUrl` hook (`web/src/app/(app)/filament/[id]/page.tsx`, `web/src/lib/hooks.ts`) called the now-removed `?format=audio` endpoint; deleted to match transcribe-then-discard.
 
 Remaining (config, no code):
 

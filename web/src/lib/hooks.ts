@@ -178,14 +178,3 @@ export function useAsk() {
       }),
   });
 }
-
-/** Voice filaments: presigned GET URL for the original recording. */
-export function useAudioUrl(id: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ["audio", id],
-    queryFn: () => api<{ url: string }>(`/filaments/${id}/export?format=audio`),
-    enabled,
-    // Presigned URLs expire; don't cache one across a long-idle tab.
-    staleTime: 10 * 60 * 1000,
-  });
-}
