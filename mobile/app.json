@@ -39,12 +39,19 @@
       ],
       "expo-secure-store",
       [
+        "expo-audio",
+        {
+          "microphonePermission": "Filaments uses the microphone to record voice notes you capture."
+        }
+      ],
+      [
         "@react-native-google-signin/google-signin",
         {
           "iosUrlScheme": "com.googleusercontent.apps.856185568169-0rc8p9cgm2utonhcac884idt4j11vil4"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,

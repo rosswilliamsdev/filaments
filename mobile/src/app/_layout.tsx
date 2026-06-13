@@ -36,6 +36,7 @@ function RootNavigator() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="filament/[id]" />
+        <Stack.Screen name="record" options={{ presentation: "fullScreenModal" }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" />

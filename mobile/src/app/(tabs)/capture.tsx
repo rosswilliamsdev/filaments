@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { useState } from "react";
 import {
@@ -51,7 +52,13 @@ export default function CaptureScreen() {
             Capture
           </Text>
 
-          <View className="items-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-6 py-8">
+          <Pressable
+            onPress={() => router.push("/record")}
+            accessibilityRole="button"
+            accessibilityLabel="Record a voice note"
+            style={{ touchAction: "manipulation" }}
+            className="items-center rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-8 active:bg-neutral-100"
+          >
             <View className="h-12 flex-row items-center gap-[3px]">
               {WAVEFORM_HEIGHTS.map((h, i) => (
                 <View
@@ -62,12 +69,12 @@ export default function CaptureScreen() {
               ))}
             </View>
             <View className="mt-4 flex-row items-center gap-2">
-              <SymbolView name="mic.fill" tintColor="#b8a48e" size={16} />
-              <Text className="font-sans text-sm text-neutral-500">
-                Voice capture arrives with the AI pipeline
+              <SymbolView name="mic.fill" tintColor="#7d6750" size={16} />
+              <Text className="font-sans-medium text-sm text-brand-700">
+                Record a voice note
               </Text>
             </View>
-          </View>
+          </Pressable>
 
           <Text className="mb-2 mt-8 font-mono text-[11px] uppercase tracking-widest text-neutral-400">
             Quick text note

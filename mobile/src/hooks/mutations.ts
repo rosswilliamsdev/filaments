@@ -1,7 +1,50 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import type { FilamentDetail } from "../lib/types";
+
+/**
+ * Voice capture handshake (mirrors the text-note path, plus the S3 leg):
+ *   1. POST /filaments {type: voice} → { filament_id, upload_url }  (auth'd JSON)
+ *   2. PUT the recorded .m4a straight to `upload_url`               (raw, no auth)
+ *   3. POST /filaments/{id}/process → enqueue the pipeline          (auth'd JSON)
+ *
+ * The PUT must NOT go through `api()` — that helper forces a JSON content-type,
+ * prepends /api/v1, and attaches the JWT, all of which would break the presigned
+ * S3 request. If step 2 or 3 fails, the row sits in `pending_upload` and the
+ * orphaned-upload sweep reaps it after 24h, so we just surface a retryable error.
+ */
+export function useVoiceUpload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ uri, title }: { uri: string; title: string }) => {
+      const created = await api<{ filament_id: string; upload_url: string | null }>(
+        "/filaments",
+        { method: "POST", body: JSON.stringify({ type: "voice", title }) },
+      );
+      if (!created.upload_url) {
+        throw new ApiError("Voice uploads aren't configured on the server.", 503);
+      }
+
+      const fileResponse = await fetch(uri);
+      const blob = await fileResponse.blob();
+      const put = await fetch(created.upload_url, {
+        method: "PUT",
+        body: blob,
+        headers: { "Content-Type": "audio/m4a" },
+      });
+      if (!put.ok) {
+        throw new ApiError(`Upload failed (${put.status}) — tap to retry.`, put.status);
+      }
+
+      await api(`/filaments/${created.filament_id}/process`, { method: "POST" });
+      return created;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["filaments"] });
+    },
+  });
+}
 
 /** Text-note capture: create → confirm /process (same handshake as files). */
 export function useCreateTextNote() {
