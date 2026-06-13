@@ -23,6 +23,7 @@ openai==1.*                         # Whisper transcription + embeddings
 
 # Document/URL extraction
 PyMuPDF==1.*                        # PDF text extraction
+python-docx==1.*                    # Word (.docx) text extraction
 trafilatura==2.*                    # URL article extraction
 
 # Auth

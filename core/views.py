@@ -1,16 +1,30 @@
+import logging
+
+import anthropic
+import openai
 from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Count, F, Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.generics import ListAPIView
 from rest_framework.pagination import CursorPagination, LimitOffsetPagination
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from . import exports
 from .models import ActionItem, Filament, Tag
-from .s3 import build_source_key, generate_upload_url
+from .rag import answer_question
+from .s3 import (
+    build_source_key,
+    document_extension,
+    generate_download_url,
+    generate_upload_url,
+)
 from .serializers import (
     ActionItemSerializer,
     FilamentCardSerializer,
@@ -19,6 +33,14 @@ from .serializers import (
     TagSerializer,
 )
 from .tasks import process_filament
+
+logger = logging.getLogger(__name__)
+
+EXPORT_FORMATS = {
+    "markdown": (exports.as_markdown, "text/markdown", ".md"),
+    "text": (exports.as_text, "text/plain", ".txt"),
+    "json": (exports.as_json, "application/json", ".json"),
+}
 
 
 class TimelineCursorPagination(CursorPagination):
@@ -67,7 +89,19 @@ class FilamentViewSet(viewsets.ModelViewSet):
 
         upload_url = None
         if filament.type != Filament.Type.TEXT:
-            filament.source_key = build_source_key(filament)
+            # Documents declare their format via `filename` so the pipeline knows
+            # how to extract it (pdf/docx/markdown). Reject unknown types before
+            # minting an upload URL — don't strand an unprocessable row.
+            ext = None
+            if filament.type == Filament.Type.DOCUMENT:
+                try:
+                    ext = document_extension(request.data.get("filename", ""))
+                except ValueError as exc:
+                    filament.delete()
+                    return Response(
+                        {"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST
+                    )
+            filament.source_key = build_source_key(filament, ext)
             try:
                 upload_url = generate_upload_url(filament.source_key)
             except ImproperlyConfigured as exc:
@@ -111,6 +145,42 @@ class FilamentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk=None):
+        """
+        PRD v1 #12: ?format=markdown|text|json downloads a rendered file;
+        ?format=audio returns a pre-signed GET URL for the original recording.
+        """
+        filament = self.get_object()
+        fmt = request.query_params.get("format", "markdown")
+
+        if fmt == "audio":
+            if filament.type != Filament.Type.VOICE or not filament.source_key:
+                return Response(
+                    {"error": "only voice filaments have original audio"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                url = generate_download_url(filament.source_key)
+            except ImproperlyConfigured as exc:
+                return Response(
+                    {"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            return Response({"url": url})
+
+        if fmt not in EXPORT_FORMATS:
+            return Response(
+                {"error": f"unknown format '{fmt}' (markdown, text, json, audio)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        render, content_type, extension = EXPORT_FORMATS[fmt]
+        filename = slugify(filament.title) or str(filament.id)
+        response = HttpResponse(
+            render(filament), content_type=f"{content_type}; charset=utf-8"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}{extension}"'
+        return response
+
     @action(detail=True, methods=["patch"], url_path=r"action-items/(?P<item_id>\d+)")
     def action_item(self, request, pk=None, item_id=None):
         item = get_object_or_404(
@@ -120,6 +190,30 @@ class FilamentViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class AskView(APIView):
+    """
+    RAG over the archive: embed the question → pgvector retrieve → Claude
+    answers in structured segments (see backend doc → API Design). Malformed
+    model output degrades to a single uncited segment inside answer_question;
+    upstream API failures surface as 503, never 500.
+    """
+
+    def post(self, request):
+        question = str(request.data.get("question") or "").strip()
+        if not question:
+            return Response(
+                {"error": "question is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            return Response(answer_question(question))
+        except (anthropic.AnthropicError, openai.OpenAIError):
+            logger.exception("/ask: upstream AI call failed")
+            return Response(
+                {"error": "ask is temporarily unavailable — try again shortly"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
 
 class TagListView(ListAPIView):

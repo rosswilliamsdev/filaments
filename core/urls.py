@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from .views import FilamentViewSet, SearchView, TagListView
+from .views import AskView, FilamentViewSet, SearchView, TagListView
 
 # trailing_slash=False matches the contract in backend-planning-doc.md
 # (/filaments/{id}/process) and the existing auth routes.
@@ -11,5 +11,6 @@ router.register("filaments", FilamentViewSet, basename="filament")
 urlpatterns = [
     path("tags", TagListView.as_view()),
     path("search", SearchView.as_view()),
+    path("ask", AskView.as_view()),
     *router.urls,
 ]

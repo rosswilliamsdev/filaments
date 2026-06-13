@@ -167,14 +167,20 @@ REST_FRAMEWORK = {
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
     ],
+    # Don't reserve ?format= for renderer selection — the export endpoint
+    # uses it as an ordinary parameter (?format=markdown|text|json|audio).
+    'URL_FORMAT_OVERRIDE': None,
 }
 
 # JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    # Generous for a single-user personal tool so re-auth is rare
+    # (backend doc → Auth → token lifetimes suggests 30-90 days).
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=60),
     'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    # Blacklisting skipped at single-user scale (the token_blacklist app was
+    # never installed, so the old BLACKLIST_AFTER_ROTATION=True was a no-op).
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
 }
@@ -195,6 +201,11 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+# A task killed mid-execution (worker death, deploy) is redelivered rather
+# than lost; safe because every pipeline step is idempotent (persist-and-resume).
+# Backend doc → Business Logic → Redis durability.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
 # AI API Keys (optional)
 ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
